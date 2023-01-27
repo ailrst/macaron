@@ -1,4 +1,4 @@
-# Copyright (c) 2022 - 2022, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2022 - 2023, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/.
 
 """The module provides API clients for VCS services, such as GitHub."""
@@ -29,6 +29,40 @@ class BaseAPIClient:
         -------
         dict
             The latest release object in JSON format.
+        """
+        return {}
+
+    def get_release(self, full_name: str, commit_sha: str) -> dict:  # pylint: disable=unused-argument
+        """Return the latest release for the repo.
+
+        Parameters
+        ----------
+        full_name : str
+            The full name of the repo.
+        commit_sha: str
+            The commit sha to get the release associated for
+
+        Returns
+        -------
+        dict
+            The release object for commit with sha commit_sha if it exists, in JSON format, or {}.
+        """
+        return {}
+
+    def get_commit_for_release(self, release: dict) -> dict:  # pylint: disable=unused-argument
+        """Return the release assets that match or empty if it doesn't exist.
+
+        The extension is ignored if name is set.
+
+        Parameters
+        ----------
+        release : dict
+            The release object in JSON format.
+
+        Returns
+        -------
+        dict
+            The commit object that produced the release
         """
         return {}
 
@@ -422,6 +456,70 @@ class GhAPIClient(BaseAPIClient):
         logger.debug("Get the latest release for %s.", full_name)
         url = f"{GhAPIClient._REPO_END_POINT}/{full_name}/releases/latest"
         response_data = send_get_http(url, self.headers)
+
+        return response_data or {}
+
+    def get_release(self, full_name: str, commit_sha: str) -> dict:
+        """Return the latest release for the repo.
+
+        Parameters
+        ----------
+        full_name : str
+            The full name of the repo.
+
+        Returns
+        -------
+        dict
+            The latest release object in JSON format.
+        """
+        logger.debug("Get the latest release for %s.", full_name)
+
+        tags_url = f"{GhAPIClient._REPO_END_POINT}/{full_name}/tags"
+        tags_resp = send_get_http_raw(tags_url, self.headers)
+        if tags_resp is None:
+            return {}
+        tags = list(tags_resp.json())
+
+        if not tags:
+            return {}
+        tag_info = filter(lambda x: x["commit"]["sha"] == commit_sha, tags)
+
+        if any(tag_info):
+            tag = next(tag_info)["name"]
+            url = f"{GhAPIClient._REPO_END_POINT}/{full_name}/releases/tags/{tag}"
+            response_data = send_get_http(url, self.headers)
+            return response_data or {}
+
+        return {}
+
+    def get_commit_for_release(self, release: dict) -> dict:
+        """Return the release assets that match or empty if it doesn't exist.
+
+        The extension is ignored if name is set.
+
+        Parameters
+        ----------
+        release : dict
+            The release object in JSON format.
+
+        Returns
+        -------
+        dict
+            The commit object that produced the release
+        """
+        full_name = "/".join(release["url"].split("/")[:-3])
+        tag = release["tag_name"]
+        tags_url = f"{full_name}/git/tags/{tag}"
+        # Fetch the tag data for the release
+        response_data = send_get_http(tags_url, self.headers)
+
+        # Find the commit associated with tag
+        # https://docs.github.com/en/rest/git/tags?apiVersion=2022-11-28
+        if not response_data:
+            return {}
+
+        commit_url = response_data["commit"]["url"]
+        response_data = send_get_http(commit_url, self.headers)
 
         return response_data or {}
 

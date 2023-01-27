@@ -1,4 +1,4 @@
-# Copyright (c) 2022 - 2022, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2022 - 2023, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/.
 
 """This module contains the implementation of the Provenance Available check."""
@@ -76,7 +76,10 @@ class ProvenanceAvailableCheck(BaseCheck):
             if isinstance(ci_service, NoneCIService):
                 continue
             # Only get the latest release.
-            release = ci_service.api_client.get_latest_release(ctx.repo_full_name)
+            release = ci_service.api_client.get_release(ctx.repo_full_name, ctx.commit_sha)
+            if not release:
+                logger.info("Unable to find release associated with target commit: using latest.")
+                release = ci_service.api_client.get_latest_release(ctx.repo_full_name)
             if release:
                 # Store the release data for other checks.
                 ci_info["latest_release"] = release
